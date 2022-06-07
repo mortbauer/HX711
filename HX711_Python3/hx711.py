@@ -5,6 +5,7 @@ This file holds HX711 class
 
 import statistics as stat
 import time
+import asyncio
 
 import RPi.GPIO as GPIO
 
@@ -17,16 +18,13 @@ class HX711:
     def __init__(self,
                  dout_pin,
                  pd_sck_pin,
-                 gain_channel_A=128,
-                 select_channel='A'):
+        ):
         """
         Init a new instance of HX711
 
         Args:
             dout_pin(int): Raspberry Pi pin number where the Data pin of HX711 is connected.
             pd_sck_pin(int): Raspberry Pi pin number where the Clock pin of HX711 is connected.
-            gain_channel_A(int): Optional, by default value 128. Options (128 || 64)
-            select_channel(str): Optional, by default 'A'. Options ('A' || 'B')
 
         Raises:
             TypeError: if pd_sck_pin or dout_pin are not int type
@@ -59,10 +57,19 @@ class HX711:
 
         GPIO.setup(self._pd_sck, GPIO.OUT)  # pin _pd_sck is output only
         GPIO.setup(self._dout, GPIO.IN)  # pin _dout is input only
-        self.select_channel(select_channel)
-        self.set_gain_A(gain_channel_A)
 
-    def select_channel(self, channel):
+    async def init(self,
+             gain_channel_A=128,
+             select_channel='A',
+        ):
+        """
+        gain_channel_A(int): Optional, by default value 128. Options (128 || 64)
+        select_channel(str): Optional, by default 'A'. Options ('A' || 'B')
+        """
+        await self.select_channel(select_channel)
+        await self.set_gain_A(gain_channel_A)
+
+    async def select_channel(self, channel):
         """
         select_channel method evaluates if the desired channel
         is valid and then sets the _wanted_channel variable.
@@ -82,10 +89,10 @@ class HX711:
                              'Received: {}'.format(channel))
         # after changing channel or gain it has to wait 50 ms to allow adjustment.
         # the data before is garbage and cannot be used.
-        self._read()
-        time.sleep(0.5)
+        await self._read()
+        await asyncio.sleep(0.5)
 
-    def set_gain_A(self, gain):
+    async def set_gain_A(self, gain):
         """
         set_gain_A method sets gain for channel A.
         
@@ -104,10 +111,10 @@ class HX711:
                              'Received: {}'.format(gain))
         # after changing channel or gain it has to wait 50 ms to allow adjustment.
         # the data before is garbage and cannot be used.
-        self._read()
-        time.sleep(0.5)
+        await self._read()
+        await asyncio.sleep(0.5)
 
-    def zero(self, readings=30):
+    async def zero(self, readings=30):
         """
         zero is a method which sets the current data as
         an offset for particulart channel. It can be used for
@@ -122,7 +129,7 @@ class HX711:
         Returns: True if error occured.
         """
         if readings > 0 and readings < 100:
-            result = self.get_raw_data_mean(readings)
+            result = await self.get_raw_data_mean(readings)
             if result != False:
                 if (self._current_channel == 'A' and
                         self._gain_channel_A == 128):
@@ -311,7 +318,7 @@ class HX711:
         else:
             return False
 
-    def _set_channel_gain(self, num):
+    async def _set_channel_gain(self, num):
         """
         _set_channel_gain is called only from _read method.
         It finishes the data transmission for HX711 which sets
@@ -338,12 +345,12 @@ class HX711:
                         'Time elapsed: {}'.format(end_counter - start_counter))
                 # hx711 has turned off. First few readings are inaccurate.
                 # Despite it, this reading was ok and data can be used.
-                result = self.get_raw_data_mean(6)  # set for the next reading.
+                result = await self.get_raw_data_mean(6)  # set for the next reading.
                 if result == False:
                     return False
         return True
 
-    def _read(self):
+    async def _read(self):
         """
         _read method reads bits from hx711, converts to INT
         and validate the data.
@@ -354,7 +361,7 @@ class HX711:
         GPIO.output(self._pd_sck, False)  # start by setting the pd_sck to 0
         ready_counter = 0
         while (not self._ready() and ready_counter <= 40):
-            time.sleep(0.01)  # sleep for 10 ms because data is not ready
+            await asyncio.sleep(0.01)  # sleep for 10 ms because data is not ready
             ready_counter += 1
             if ready_counter == 50:  # if counter reached max value then return False
                 if self._debug_mode:
@@ -381,19 +388,19 @@ class HX711:
             data_in = (data_in << 1) | GPIO.input(self._dout)
 
         if self._wanted_channel == 'A' and self._gain_channel_A == 128:
-            if not self._set_channel_gain(1):  # send only one bit which is 1
+            if not await self._set_channel_gain(1):  # send only one bit which is 1
                 return False  # return False because channel was not set properly
             else:
                 self._current_channel = 'A'  # else set current channel variable
                 self._gain_channel_A = 128  # and gain
         elif self._wanted_channel == 'A' and self._gain_channel_A == 64:
-            if not self._set_channel_gain(3):  # send three ones
+            if not await self._set_channel_gain(3):  # send three ones
                 return False  # return False because channel was not set properly
             else:
                 self._current_channel = 'A'  # else set current channel variable
                 self._gain_channel_A = 64
         else:
-            if not self._set_channel_gain(2):  # send two ones
+            if not await self._set_channel_gain(2):  # send two ones
                 return False  # return False because channel was not set properly
             else:
                 self._current_channel = 'B'  # else set current channel variable
@@ -424,7 +431,7 @@ class HX711:
 
         return signed_data
 
-    def get_raw_data_mean(self, readings=30):
+    async def get_raw_data_mean(self, readings=30):
         """
         get_raw_data_mean returns mean value of readings.
 
@@ -440,7 +447,8 @@ class HX711:
         data_list = []
         # do required number of readings
         for _ in range(readings):
-            data_list.append(self._read())
+            val = await self._read()
+            data_list.append(val)
         data_mean = False
         if readings > 2 and self._data_filter:
             filtered_data = self._data_filter(data_list)
@@ -456,7 +464,7 @@ class HX711:
         self._save_last_raw_data(backup_channel, backup_gain, data_mean)
         return int(data_mean)
 
-    def get_data_mean(self, readings=30):
+    async def get_data_mean(self, readings=30):
         """
         get_data_mean returns average value of readings minus
         offset for the channel which was read.
@@ -467,7 +475,7 @@ class HX711:
         Returns: (bool || int) False if reading was not ok.
             If it returns int then reading was ok
         """
-        result = self.get_raw_data_mean(readings)
+        result = await self.get_raw_data_mean(readings)
         if result != False:
             if self._current_channel == 'A' and self._gain_channel_A == 128:
                 return result - self._offset_A_128
@@ -478,7 +486,7 @@ class HX711:
         else:
             return False
 
-    def get_weight_mean(self, readings=30):
+    async def get_weight_mean(self, readings=30):
         """
         get_weight_mean returns average value of readings minus
         offset divided by scale ratio for a specific channel
@@ -490,7 +498,7 @@ class HX711:
         Returns: (bool || float) False if reading was not ok.
             If it returns float then reading was ok
         """
-        result = self.get_raw_data_mean(readings)
+        result = await self.get_raw_data_mean(readings)
         if result != False:
             if self._current_channel == 'A' and self._gain_channel_A == 128:
                 return float(
@@ -644,7 +652,7 @@ class HX711:
         GPIO.output(self._pd_sck, False)
         time.sleep(0.01)
 
-    def reset(self):
+    async def reset(self):
         """
         reset method resets the hx711 and prepare it for the next reading.
 
@@ -652,7 +660,7 @@ class HX711:
         """
         self.power_down()
         self.power_up()
-        result = self.get_raw_data_mean(6)
+        result = await self.get_raw_data_mean(6)
         if result:
             return False
         else:
