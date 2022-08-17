@@ -89,7 +89,7 @@ class HX711:
                              'Received: {}'.format(channel))
         # after changing channel or gain it has to wait 50 ms to allow adjustment.
         # the data before is garbage and cannot be used.
-        await self._read()
+        await self.read_single_value()
         await asyncio.sleep(0.5)
 
     async def set_gain_A(self, gain):
@@ -111,7 +111,7 @@ class HX711:
                              'Received: {}'.format(gain))
         # after changing channel or gain it has to wait 50 ms to allow adjustment.
         # the data before is garbage and cannot be used.
-        await self._read()
+        await self.read_single_value()
         await asyncio.sleep(0.5)
 
     async def zero(self, readings=30):
@@ -306,9 +306,9 @@ class HX711:
         else:
             return False
 
-    def _ready(self):
+    def read_single_valuey(self):
         """
-        _ready method check if data is prepared for reading from HX711
+        read_single_valuey method check if data is prepared for reading from HX711
 
         Returns: bool True if ready else False when not ready        
         """
@@ -320,7 +320,7 @@ class HX711:
 
     async def _set_channel_gain(self, num):
         """
-        _set_channel_gain is called only from _read method.
+        _set_channel_gain is called only from read_single_value method.
         It finishes the data transmission for HX711 which sets
         the next required gain and channel.
 
@@ -350,9 +350,9 @@ class HX711:
                     return False
         return True
 
-    async def _read(self):
+    async def read_single_value(self):
         """
-        _read method reads bits from hx711, converts to INT
+        read_single_value method reads bits from hx711, converts to INT
         and validate the data.
         
         Returns: (bool || int) if it returns False then it is false reading.
@@ -360,12 +360,12 @@ class HX711:
         """
         GPIO.output(self._pd_sck, False)  # start by setting the pd_sck to 0
         ready_counter = 0
-        while (not self._ready() and ready_counter <= 40):
+        while (not self.read_single_valuey() and ready_counter <= 40):
             await asyncio.sleep(0.01)  # sleep for 10 ms because data is not ready
             ready_counter += 1
             if ready_counter == 50:  # if counter reached max value then return False
                 if self._debug_mode:
-                    print('self._read() not ready after 40 trials\n')
+                    print('self.read_single_value() not ready after 40 trials\n')
                 return False
 
         # read first 24 bits of data
@@ -447,7 +447,7 @@ class HX711:
         data_list = []
         # do required number of readings
         for _ in range(readings):
-            val = await self._read()
+            val = await self.read_single_value()
             data_list.append(val)
         data_mean = False
         if readings > 2 and self._data_filter:
